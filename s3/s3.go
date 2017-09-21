@@ -24,10 +24,18 @@ type S3ObjectStoreDriver struct {
 
 const (
 	KIND = "s3"
+	HTTP_KIND = "s3+http"
+	HTTPS_KIND = "s3+https"
 )
 
 func init() {
 	if err := objectstore.RegisterDriver(KIND, initFunc); err != nil {
+		panic(err)
+	}
+	if err := objectstore.RegisterDriver(HTTP_KIND, initFunc); err != nil {
+		panic(err)
+	}
+	if err := objectstore.RegisterDriver(HTTPS_KIND, initFunc); err != nil {
 		panic(err)
 	}
 }
@@ -40,22 +48,45 @@ func initFunc(destURL string) (objectstore.ObjectStoreDriver, error) {
 		return nil, err
 	}
 
-	if u.Scheme != KIND {
-		return nil, fmt.Errorf("BUG: Why dispatch %v to %v?", u.Scheme, KIND)
-	}
+	if u.Scheme == HTTP_KIND || u.Scheme == HTTPS_KIND {
+		// bucket will be in the URL
+		b.service.Bucket = ""
+		if u.User != nil {
+			b.service.Region = u.User.Username()
+		} else {
+			b.service.Region = ""
+		}
+		split := strings.Split(u.Scheme, "+")
+		b.service.Endpoint = split[1] + "://" + u.Host
 
-	if u.User != nil {
-		b.service.Region = u.Host
-		b.service.Bucket = u.User.Username()
-	} else {
-		//We would depends on AWS_REGION environment variable
-		b.service.Bucket = u.Host
-	}
-	b.path = u.Path
-	if b.service.Bucket == "" || b.path == "" {
-		return nil, fmt.Errorf("Invalid URL. Must be either s3://bucket@region/path/, or s3://bucket/path")
-	}
+		b.path = u.Path
+		if b.path == "" {
+			return nil, fmt.Errorf("Invalid URL. Must be either s3+http://region@host/bucket/path/, s3+https://host/bucket/path/")
+		}
+		b.destURL = b.service.Endpoint + u.Path
 
+	} else if u.Scheme == KIND {
+
+		if u.User != nil {
+			b.service.Region = u.Host
+			b.service.Bucket = u.User.Username()
+		} else {
+			//We would depends on AWS_REGION environment variable
+			b.service.Bucket = u.Host
+		}
+
+		b.path = u.Path
+		if b.service.Bucket == "" || b.path == "" {
+			return nil, fmt.Errorf("Invalid URL. Must be either s3://bucket@region/path/, s3://bucket/path")
+		}
+		b.destURL = KIND + "://" + b.service.Bucket
+		if b.service.Region != "" {
+			b.destURL += "@" + b.service.Region
+		}
+		b.destURL += "/" + b.path
+    } else {
+		return nil, fmt.Errorf("BUG: Why dispatch %v to %v / %v?", u.Scheme, KIND, HTTP_KIND)
+    }
 	//Leading '/' can cause mystery problems for s3
 	b.path = strings.TrimLeft(b.path, "/")
 
@@ -64,13 +95,8 @@ func initFunc(destURL string) (objectstore.ObjectStoreDriver, error) {
 		return nil, err
 	}
 
-	b.destURL = KIND + "://" + b.service.Bucket
-	if b.service.Region != "" {
-		b.destURL += "@" + b.service.Region
-	}
-	b.destURL += "/" + b.path
+	log.Debug("Loaded driver for %sz", b.destURL)
 
-	log.Debug("Loaded driver for %v", b.destURL)
 	return b, nil
 }
 

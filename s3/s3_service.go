@@ -13,10 +13,21 @@ import (
 type S3Service struct {
 	Region string
 	Bucket string
+	Endpoint string
 }
 
 func (s *S3Service) New() (*s3.S3, error) {
-	return s3.New(session.New(), &aws.Config{Region: &s.Region}), nil
+	return s3.New(session.New(), &aws.Config{Region: &s.Region, Endpoint: &s.Endpoint}), nil
+
+	/*credsEnv := credentials.NewEnvCredentials()
+	credsFile := credentials.NewSharedCredentials("", "default")
+
+	cfg := aws.NewConfig().WithCredentials(credsEnv).WithCredentials(credsFile).WithRegion(s.Region)
+
+	if s.Endpoint != "" {
+		cfg.WithEndpoint(s.Endpoint)
+	}
+	return s3.New(session.New(), cfg), nil*/
 }
 
 func (s *S3Service) Close() {
@@ -43,8 +54,8 @@ func (s *S3Service) ListObjects(key, delimiter string) ([]*s3.Object, []*s3.Comm
 	// WARNING: Directory must end in "/" in S3, otherwise it may match
 	// unintentially
 	params := &s3.ListObjectsInput{
-		Bucket:    aws.String(s.Bucket),
-		Prefix:    aws.String(key),
+		Bucket:	aws.String(s.Bucket),
+		Prefix:	aws.String(key),
 		Delimiter: aws.String(delimiter),
 	}
 	resp, err := svc.ListObjects(params)
@@ -62,7 +73,7 @@ func (s *S3Service) HeadObject(key string) (*s3.HeadObjectOutput, error) {
 	defer s.Close()
 	params := &s3.HeadObjectInput{
 		Bucket: aws.String(s.Bucket),
-		Key:    aws.String(key),
+		Key:	aws.String(key),
 	}
 	resp, err := svc.HeadObject(params)
 	if err != nil {
@@ -80,7 +91,7 @@ func (s *S3Service) PutObject(key string, reader io.ReadSeeker) error {
 
 	params := &s3.PutObjectInput{
 		Bucket: aws.String(s.Bucket),
-		Key:    aws.String(key),
+		Key:	aws.String(key),
 		Body:   reader,
 	}
 
@@ -100,7 +111,7 @@ func (s *S3Service) GetObject(key string) (io.ReadCloser, error) {
 
 	params := &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
-		Key:    aws.String(key),
+		Key:	aws.String(key),
 	}
 
 	resp, err := svc.GetObject(params)
